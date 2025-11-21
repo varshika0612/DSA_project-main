@@ -144,7 +144,7 @@ PathResult Algorithms:: shortestPathDistance(
             return nearest;
 
     }
-    std::vector<int> Algorithms::knnEuclidean(const Graph &graph,double query_lat,double query_lon,const std::string&poi_type,int k){
+std::vector<int> Algorithms::knnEuclidean(const Graph &graph,double query_lat,double query_lon,const std::string&poi_type,int k){
         std::priority_queue<std::pair<double,int>> distances;
         int cur_size=0;
         for(const Node &node:graph.getNodes()){
@@ -170,57 +170,74 @@ PathResult Algorithms:: shortestPathDistance(
             }
             return result;
     }
-    std::vector<int> Algorithms::knnShortestPath(const Graph& graph,double query_lat,double query_lon,const std::string& poi_type,int k){
-        std::vector<int> candidates=knnEuclidean(graph,query_lat,query_lon,poi_type,k*2);
-        int start_node=findNearestNode(graph,query_lat,query_lon);
-        if(start_node==-1)return {};
-        std::unordered_map<int, double> dist;
-        std::priority_queue<std::pair<double, int>,std::vector<std::pair<double, int>>,std::greater<std::pair<double, int>>> pq;
-        dist[start_node]=0.0;
-        pq.push({0.0,start_node});
-        std::vector<std::pair<double,int>> poi_distances;
-        while (!pq.empty()) {
-            double d = pq.top().first;
-            int u = pq.top().second;
-            pq.pop();
-            
-            if (d > dist[u]) continue;
-            
-            for (int edge_id : graph.getAdjacentEdges(u)) {
-                const Edge* e = graph.getEdge(edge_id);
-                if (!e || e->is_removed) continue;
-                
-                int v = (e->u == u) ? e->v : e->u;
-                if (e->oneway && e->v != v) continue;
-                
-                double new_dist = dist[u] + e->length;
-                
-                if (!dist.count(v) || new_dist < dist[v]) {
-                    dist[v] = new_dist;
-                    pq.push({new_dist, v});
-                }
+
+ std::vector<int> Algorithms::knnShortestPath(const Graph& graph, double query_lat, double query_lon, const std::string& poi_type, int k) {
+    // 1. Find start node
+    int start_node = findNearestNode(graph, query_lat, query_lon);
+    if (start_node == -1) return {};
+
+    // 2. Setup Dijkstra
+    // Initialize with Infinity
+    std::vector<double> dist(graph.getNodes().size(), std::numeric_limits<double>::max());
+    
+    std::priority_queue<std::pair<double, int>, 
+                        std::vector<std::pair<double, int>>, 
+                        std::greater<std::pair<double, int>>> pq;
+
+    dist[start_node] = 0.0;
+    pq.push({0.0, start_node});
+
+    std::vector<int> result;
+
+    // 3. Run Dijkstra with Early Exit
+    while (!pq.empty()) {
+        double d = pq.top().first;
+        int u = pq.top().second;
+        pq.pop();
+
+        // Standard Dijkstra check: if we found a shorter way before, skip
+        if (d > dist[u]) continue;
+
+        // --- OPTIMIZATION START ---
+        // Check if current node 'u' is the POI we need.
+        // Since Dijkstra visits nodes in strictly increasing order of distance,
+        // the first 'k' POIs we find are GUARANTEED to be the closest 'k'.
+        const Node& u_node = graph.getNodes()[u]; // Assuming efficient access
+        bool is_target_poi = false;
+        
+        // Check the POI string vector
+        for (const auto& type : u_node.pois) {
+            if (type == poi_type) {
+                is_target_poi = true;
+                break;
             }
         }
-        std::priority_queue<std::pair<double,int>> top_k;
-        int si=0;
-        for(const Node &node:graph.getNodes()){
-            if(dist.count(node.id) && std::find(node.pois.begin(),node.pois.end(),poi_type)!=node.pois.end()){
-                double path_dist=dist[node.id];
-                if(si<k){
-                    top_k.push({path_dist,node.id} );
-                    si++;
-                }
-                else if(path_dist<top_k.top().first){
-                    top_k.pop();
-                    top_k.push({path_dist,node.id} );
-                }
+
+        if (is_target_poi) {
+            result.push_back(u);
+            // If we have found k items, WE STOP IMMEDIATELY.
+            // No need to search the rest of the graph.
+            if (result.size() == k) {
+                return result;
             }
         }
-        std::vector<int> result(si);
-        for(int i=0;i<si;i++){
-            result[si-i-1]=top_k.top().second;
-            top_k.pop();
-        }   
-        std::reverse(result.begin(),result.end());
-        return result;
+
+        // Expand neighbors
+        for (int edge_id : graph.getAdjacentEdges(u)) {
+            const Edge* e = graph.getEdge(edge_id);
+            if (!e || e->is_removed) continue;
+
+            int v = (e->u == u) ? e->v : e->u;
+            if (e->oneway && e->v != v) continue;
+
+            double new_dist = dist[u] + e->length;
+
+            if (new_dist < dist[v]) {
+                dist[v] = new_dist;
+                pq.push({new_dist, v});
+            }
         }
+    }
+
+    return result;
+}
