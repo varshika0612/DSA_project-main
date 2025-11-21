@@ -203,16 +203,16 @@ PathResult Algorithms:: shortestPathDistance(
         }
         std::priority_queue<std::pair<double,int>> top_k;
         int si=0;
-        for(int node_id:candidates){
-            if(dist.count(node_id)){
-                double path_dist=dist[node_id];
+        for(const Node &node:graph.getNodes()){
+            if(dist.count(node.id) && std::find(node.pois.begin(),node.pois.end(),poi_type)!=node.pois.end()){
+                double path_dist=dist[node.id];
                 if(si<k){
-                    top_k.push({path_dist,node_id});
+                    top_k.push({path_dist,node.id} );
                     si++;
                 }
                 else if(path_dist<top_k.top().first){
                     top_k.pop();
-                    top_k.push({path_dist,node_id});
+                    top_k.push({path_dist,node.id} );
                 }
             }
         }
