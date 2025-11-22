@@ -1,3 +1,4 @@
+
 #ifndef ALGORITHMS_HPP
 #define ALGORITHMS_HPP
 #include "Graph.hpp"
@@ -19,6 +20,8 @@ class Algorithms{
     static int findNearestNode(const Graph&graph,
     double lat,double lon);
     public:
+    static double speed(const Graph&graph);
+
     static PathResult shortestPathDistance(
         const Graph&graph,
         int src,

@@ -1,6 +1,5 @@
 #include "Graph.hpp"
 
-
 void Graph::addNode(const Node& node){
     node_id_to_index[node.id] = nodes.size();
     nodes.push_back(node);
@@ -59,54 +58,52 @@ const std::vector<int> & Graph::getAdjacentEdges(int node_id) const{
     return empty;
 }
 
-double Graph::getEdgeTime(int edge_id, double start_time) const { // Fixed typo 'strat_time'
-    const Edge* e = getEdge(edge_id);
-    if (!e) return INF;
+// BUG FIX: Added safety counter to prevent infinite loops
+double Graph::getEdgeTime(int edge_id, double strat_time) const{
+    const Edge* e=getEdge(edge_id);
+    if(!e) return INF;
 
-    // FIX 1: Only fallback if profile is completely empty. 
-    // Do not enforce size() == 96, as this breaks simplified test cases.
-    if (e->speed_profile.empty()) {
+    if(e->speed_profile.empty()||e->speed_profile.size()!=96){
         return e->average_time;
     }
 
     double total_time = 0.0;
     double remaining_distance = e->length;
-    double current_time = start_time;
-    size_t profile_size = e->speed_profile.size(); // Get actual size
+    double current_time = strat_time;
+    
+    int safety_loop_counter = 0;
+    const int MAX_LOOPS = 10000; // Prevent freezing on zero-speed edges
 
-    while (remaining_distance >= 1e-6) {
-        // FIX 2: Use profile_size for modulo to prevent segfaults on small vectors
-        int slot = static_cast<int>(current_time / 900.0) % profile_size;
-        
+    while(remaining_distance >= 1e-6 && safety_loop_counter < MAX_LOOPS){
+        int slot = static_cast<int>(current_time / 900.0) % 96;
         double speed = e->speed_profile[slot];
 
-        // Fallback for bad data (0 speed)
-        if (speed < 1e-6) {
-             if (e->average_time > 1e-6) speed = e->length / e->average_time;
-             else return INF; // Road is blocked (0 speed, 0 avg time)
+        if(speed < 1e-6) {
+             // If speed is 0, we might get stuck. 
+             // Use average time as fallback or skip to next slot.
+             speed = e->length / e->average_time;
         }
+        if (speed < 1e-6) return INF; // Hard failure if fallback fails
 
-        // Time remaining until the end of the current 900-second slot
         double time_to_slot_end = 900.0 - fmod(current_time, 900.0);
-        
-        // Distance we can cover in the remainder of this slot
         double distance_to_slot_end = speed * time_to_slot_end;
 
-        if (distance_to_slot_end >= remaining_distance) {
-            // Case: Edge is completed within this slot
+        if(distance_to_slot_end >= remaining_distance){
             double time_needed = remaining_distance / speed;
             total_time += time_needed;
             return total_time; 
         } else {
-           // [cite_start]// Case: We reach the end of the slot and must continue in the next one [cite: 183]
             total_time += time_to_slot_end;
             remaining_distance -= distance_to_slot_end;
             current_time += time_to_slot_end;
         }
+        safety_loop_counter++;
     }
     
+    if (safety_loop_counter >= MAX_LOOPS) return INF;
     return total_time;
 }
+
 double Graph::euclideanDistance(double lat1, double lon1, double lat2, double lon2) const{
     double dx = (lon2 - lon1) * 111320.0 * cos((lat1+lat2)/2.0*M_PI/180.0);
     double dy = (lat2 - lat1) * 110540.0;

@@ -219,7 +219,7 @@ if __name__ == "__main__":
 
     print("\nTest files generated successfully.")
     print("Run with: ./phase1 test_graph.json test_queries.json output.json")
-=======
+
 """Test case generator for phase 1
 Generates synthetic graph and query files for testing"""
 
@@ -235,7 +235,7 @@ def generate_graph(num_nodes = 100, num_edges = 300, filename = "test_graph.json
     lat_min, lat_max = 19.0, 19.3
     lon_min, lon_max = 72.8, 73.0
 
-    pois_types = ["Restaurent", "Hospital", "School", "Mall", "Park", "Hotel"]
+    pois_types = ["Restaurant", "Hospital", "School", "Mall", "Park", "Hotel"]
     road_types = ["primary", "secondary", "tertiary", "local", "expressway"]
 
     nodes = []
@@ -365,7 +365,6 @@ def generate_queries(graph, num_queries = 50, filename = "test_queries.json") :
     num_nodes = len(graph["nodes"])
     edge_ids = [e["id"] for e in graph["edges"]]
     pois = ["Restaurant", "Hospital", "School", "Mall", "Park", "Hotel"]
-
     events = []
     query_id = 1
 
@@ -440,4 +439,3 @@ if __name__ == "__main__":
 
     print("\nTest files generated successfully.")
     print("Run with: ./phase1 test_graph.json test_queries.json output.json")
->>>>>>> cab6b08fb4f3157ce7f2e451d180ed291cacdd4f
