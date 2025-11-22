@@ -58,6 +58,7 @@ const std::vector<int> & Graph::getAdjacentEdges(int node_id) const{
     return empty;
 }
 
+// BUG FIX: Added safety counter to prevent infinite loops
 double Graph::getEdgeTime(int edge_id, double strat_time) const{
     const Edge* e=getEdge(edge_id);
     if(!e) return INF;
@@ -70,12 +71,19 @@ double Graph::getEdgeTime(int edge_id, double strat_time) const{
     double remaining_distance = e->length;
     double current_time = strat_time;
     
-    while(remaining_distance >= 1e-6){
+    int safety_loop_counter = 0;
+    const int MAX_LOOPS = 10000; // Prevent freezing on zero-speed edges
+
+    while(remaining_distance >= 1e-6 && safety_loop_counter < MAX_LOOPS){
         int slot = static_cast<int>(current_time / 900.0) % 96;
         double speed = e->speed_profile[slot];
 
-        if(speed < 1e-6) speed = e->length / e->average_time;
-        if (speed < 1e-6) return INF; 
+        if(speed < 1e-6) {
+             // If speed is 0, we might get stuck. 
+             // Use average time as fallback or skip to next slot.
+             speed = e->length / e->average_time;
+        }
+        if (speed < 1e-6) return INF; // Hard failure if fallback fails
 
         double time_to_slot_end = 900.0 - fmod(current_time, 900.0);
         double distance_to_slot_end = speed * time_to_slot_end;
@@ -89,7 +97,10 @@ double Graph::getEdgeTime(int edge_id, double strat_time) const{
             remaining_distance -= distance_to_slot_end;
             current_time += time_to_slot_end;
         }
+        safety_loop_counter++;
     }
+    
+    if (safety_loop_counter >= MAX_LOOPS) return INF;
     return total_time;
 }
 

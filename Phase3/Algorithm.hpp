@@ -17,16 +17,18 @@
 #include <functional>
 
 // Include Phase 2 algorithm for Yen's and Landmarks
+// Ensure this file exists in your directory structure
 #include "../Phase2/Algorithm.hpp"
 #include "Graph.hpp"
 
-// Pair Hash for unordered_map
+//[cite_start]// Improved Pair Hash to reduce collisions [cite: 1]
 struct PairHash {
     template <class T1, class T2>
     std::size_t operator()(const std::pair<T1, T2>& p) const {
         auto h1 = std::hash<T1>{}(p.first);
         auto h2 = std::hash<T2>{}(p.second);
-        return h1 ^ (h2 << 1);
+        // Boost-like hash combine
+        return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
     }
 };
 
@@ -86,7 +88,7 @@ public:
     int order_count = 0; 
     
     static constexpr int MAX_ORDERS_PER_DRIVER = 10;
-    static constexpr double MAX_ROUTE_TIME = 7200.0;  // 2 hours
+    static constexpr double MAX_ROUTE_TIME = 28800.0;  // Increased to 8 hours for Phase 3 realism
 
     Driver(int driver_id, int depot_node);
 
@@ -153,12 +155,9 @@ private:
     std::vector<Order> orders;
     std::mutex result_mutex;
     
-    int selectBestDriver(std::priority_queue<std::tuple<double, double, int>,
-                         std::vector<std::tuple<double, double, int>>,
-                         std::greater<>>& driver_heap);
+    // Removed unused selectBestDriver declaration
 
 public:
-    // No default argument for cfg to avoid compiler error
     Scheduler(GraphAdapter& ga, int depot, int num_drivers, const Config& cfg);
 
     void loadOrders(std::vector<Order>&& o);
