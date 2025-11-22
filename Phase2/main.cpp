@@ -160,7 +160,6 @@ int main(int argc, char* argv[]) {
 
     // 4. Pre-processing (Task 3 Landmarks) [cite: 278]
     // We compute landmarks immediately after loading graph
-    std::cout << "Precomputing Landmarks..." << std::endl;
     Algorithm::precomputeLandmarks(graph);
 
     // 5. Read Queries JSON

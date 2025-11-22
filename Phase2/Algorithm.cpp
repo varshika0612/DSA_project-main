@@ -379,34 +379,31 @@ void Algorithm::precomputeLandmarks(const Graph& graph) {
     
     const auto& nodes = graph.getNodes();
     int N = nodes.size();
+    if (N == 0) return; // Handle empty graph
     
+    // 1. Map IDs for O(1) access
     id_map.clear();
     id_map.reserve(N);
     for(int i = 0; i < N; ++i) {
         id_map[nodes[i].id] = i;
     }
 
+    // 2. Set Number of Landmarks to sqrt(N)
     int num_landmarks = static_cast<int>(std::sqrt(N));
-    if(num_landmarks < 20) num_landmarks = 20;
-    if(num_landmarks > 60) num_landmarks = 60;
-    if(num_landmarks > N) num_landmarks = N;
+    
+    // Safety checks: 
+    // - Must have at least 1 landmark if nodes exist
+    // - Cannot have more landmarks than nodes
+    if (num_landmarks < 1) num_landmarks = 1;
+    if (num_landmarks > N) num_landmarks = N;
 
-    std::mt19937 rng(42);
-    std::uniform_int_distribution<int> dist(0, N - 1);
-
-    landmark_indices.clear();
-    std::set<int> unique_check;
-    while (landmark_indices.size() < (size_t)num_landmarks) {
-        int idx = dist(rng);
-        if (unique_check.find(idx) == unique_check.end()) {
-            landmark_indices.push_back(idx);
-            unique_check.insert(idx);
-        }
-    }
-
+    // 3. Initialize Tables
     landmarks_to_nodes.assign(num_landmarks, std::vector<double>(N, INF));
     nodes_to_landmarks.assign(N, std::vector<double>(num_landmarks, INF));
+    landmark_indices.clear();
 
+    // 4. Build Reverse Graph (needed for Backward Dijkstra: Node -> Landmark)
+    //    We build this once here to avoid rebuilding it K times.
     std::vector<std::vector<std::pair<int, double>>> rev_adj(N);
     for (const auto& u_node : nodes) {
         int u_idx = id_map[u_node.id];
@@ -414,27 +411,36 @@ void Algorithm::precomputeLandmarks(const Graph& graph) {
             const Edge* e = graph.getEdge(edge_id);
             if(!e || e->is_removed) continue;
             
-            int my_id = u_node.id;
-            int other_id = (e->u == my_id) ? e->v : e->u;
+            int v_id = (e->u == u_node.id) ? e->v : e->u;
             
-            if(id_map.find(other_id) == id_map.end()) continue;
-            int other_idx = id_map[other_id];
+            // Strict One-Way Logic: 
+            // If edge is u->v (oneway), then in reverse graph we add v->u.
+            if(e->oneway && e->u != u_node.id) continue; 
             
-            bool can_traverse = true;
-            if(e->oneway && e->u != my_id) can_traverse = false;
-            
-            if(can_traverse) {
-                rev_adj[other_idx].push_back({u_idx, e->length});
+            if(id_map.find(v_id) != id_map.end()) {
+                int v_idx = id_map[v_id];
+                rev_adj[v_idx].push_back({u_idx, e->length});
             }
         }
     }
 
+    // 5. Greedy Farthest Point Sampling (FPS)
+    // Step 5a: Pick the first landmark randomly
+    std::mt19937 rng(42); // Fixed seed for reproducibility
+    std::uniform_int_distribution<int> dist(0, N - 1);
+    landmark_indices.push_back(dist(rng));
+
+    // min_dist_coverage[i] stores the distance from the *closest* selected landmark to node i.
+    // We use this to find the node that is *farthest* from the *current set* of landmarks.
+    std::vector<double> min_dist_coverage(N, INF);
+
     for (int k = 0; k < num_landmarks; ++k) {
         int start_idx = landmark_indices[k];
 
-        // Forward
+        // --- A. Forward Dijkstra (Landmark L -> All Nodes) ---
+        // Fills landmarks_to_nodes[k]
         {
-            std::priority_queue<std::pair<double, int>, std::vector<std::pair<double, int>>, std::greater<std::pair<double, int>>> pq;
+            std::priority_queue<State, std::vector<State>, std::greater<State>> pq;
             landmarks_to_nodes[k][start_idx] = 0.0;
             pq.push({0.0, start_idx});
             
@@ -465,9 +471,11 @@ void Algorithm::precomputeLandmarks(const Graph& graph) {
             }
         }
 
-        // Backward
+        // --- B. Backward Dijkstra (All Nodes -> Landmark L) ---
+        // Fills nodes_to_landmarks[...][k]
+        // We compute 'dist(u, L)' by running Dijkstra from L on the *Reverse Graph*.
         {
-            std::priority_queue<std::pair<double, int>, std::vector<std::pair<double, int>>, std::greater<std::pair<double, int>>> pq;
+            std::priority_queue<State, std::vector<State>, std::greater<State>> pq;
             nodes_to_landmarks[start_idx][k] = 0.0;
             pq.push({0.0, start_idx});
 
@@ -478,9 +486,11 @@ void Algorithm::precomputeLandmarks(const Graph& graph) {
 
                 if (d > nodes_to_landmarks[u_idx][k]) continue;
 
+                // Use Reverse Adjacency List
                 for(auto& edge : rev_adj[u_idx]) {
                     int v_idx = edge.first;
                     double weight = edge.second;
+                    
                     double new_dist = d + weight;
                     if(new_dist < nodes_to_landmarks[v_idx][k]) {
                         nodes_to_landmarks[v_idx][k] = new_dist;
@@ -489,10 +499,50 @@ void Algorithm::precomputeLandmarks(const Graph& graph) {
                 }
             }
         }
+
+        // --- C. Pick Next Landmark (Maximize Minimum Distance) ---
+        // We only need to pick a new landmark if we haven't reached the count yet.
+        if (k < num_landmarks - 1) {
+            double max_dist = -1.0;
+            int best_candidate = -1;
+
+            for (int i = 0; i < N; ++i) {
+                // Update coverage using the landmark we just processed (index k)
+                // The distance from the set S is min(existing_min, dist(L_k, i))
+                // Note: We generally use the Forward distance L->i for geometric spreading
+                double d = landmarks_to_nodes[k][i];
+                
+                if (d < min_dist_coverage[i]) {
+                    min_dist_coverage[i] = d;
+                }
+
+                // Find the node with the largest minimum distance to the set
+                // If a node is unreachable (INF), it's an excellent candidate (disconnected component)
+                if (min_dist_coverage[i] > max_dist) {
+                    max_dist = min_dist_coverage[i];
+                    best_candidate = i;
+                }
+            }
+
+            // Fallback: If the graph is small or fully saturated, pick first unvisited node
+            if (best_candidate == -1) {
+                for(int t=0; t<N; ++t) {
+                    bool already_picked = false;
+                    for(int l : landmark_indices) if(l == t) { already_picked = true; break; }
+                    if(!already_picked) { 
+                        best_candidate = t; 
+                        break; 
+                    }
+                }
+            }
+            
+            if (best_candidate != -1) {
+                landmark_indices.push_back(best_candidate);
+            }
+        }
     }
     is_precomputed = true;
 }
-
 double Algorithm::approximateShortestPathDistance(const Graph& graph, int source_id, int target_id) {
     if(!is_precomputed) return -1.0;
     
