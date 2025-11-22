@@ -35,9 +35,8 @@ class Yen{
             return f_score > other.f_score;
         }
     };
+    path a_star(int start,int end,const std::set<int>&banned_edges,const std::set<int>&banned_nodes);
     public:
-   static path a_star(int start,int end,const std::set<int>&banned_edges,const std::set<int>&banned_nodes);
-
     Yen(const Graph*g):graph(g){buildReverseGraph();}
     std::vector<path> findK_paths(int start,int end,int k);
 

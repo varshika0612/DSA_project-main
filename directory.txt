@@ -8,6 +8,7 @@
 │   ├── Graph.hpp
 │   ├── main.cpp
 │   └── tests
+│       ├── generate_test.py
 │       ├── simple_queries.json
 │       ├── simple_test.json
 │       ├── test_commuter_graph.json
@@ -20,7 +21,23 @@
 │   ├── Algorithm.cpp
 │   ├── Algorithm.hpp
 │   ├── Graph.cpp
-│   └── Graph.hpp
-└── sampledriver.cpp
+│   ├── Graph.hpp
+│   ├── main.cpp
+│   └── tests
+│       ├── approx_graph.json
+│       ├── approx_queries.json
+│       ├── cycle_graph.json
+│       ├── cycle_queries.json
+│       ├── diff_graph.json
+│       ├── diff_queries.json
+│       ├── overlap_graph.json
+│       ├── overlap_querie.json
+│       ├── test_graph.json
+│       └── test_queries.json
+└── Phase3
+    ├── Algorithm.cpp
+    ├── Algorithm.hpp
+    ├── Graph.cpp
+    └── Graph.hpp
 
-4 directories, 20 files
+6 directories, 35 files

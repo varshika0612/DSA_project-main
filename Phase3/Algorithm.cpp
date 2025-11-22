@@ -21,9 +21,9 @@ double GraphAdapter::getExactShortestDistance(int u, int v) {
     // Use Yen's A* for exact shortest path
     // Yen yen_solver;
     // yen_solver.setGraph(const_cast<Graph*>(&lib_graph));
-    auto paths =Yen::a_star(u, v, {}, {});
-    
-    double dist = paths.nodes.empty() ? INF : paths.cost;
+    auto paths = Algorithm::kShortestPathsHeuristic(lib_graph, u, v, 1, 0.5);
+        
+        double dist = paths.empty() ? INF : paths[0].cost;
     distance_cache[key] = dist;
     return dist;
 }
