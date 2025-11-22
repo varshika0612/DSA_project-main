@@ -1,6 +1,5 @@
 #include "Graph.hpp"
 
-
 void Graph::addNode(const Node& node){
     node_id_to_index[node.id] = nodes.size();
     nodes.push_back(node);
@@ -70,35 +69,27 @@ double Graph::getEdgeTime(int edge_id, double strat_time) const{
     double total_time = 0.0;
     double remaining_distance = e->length;
     double current_time = strat_time;
-
     
-    // ... inside Graph::getEdgeTime
     while(remaining_distance >= 1e-6){
         int slot = static_cast<int>(current_time / 900.0) % 96;
         double speed = e->speed_profile[slot];
 
         if(speed < 1e-6) speed = e->length / e->average_time;
-        // Edge Case 4: Handle zero/infinite time if speed is still zero and average_time is zero
         if (speed < 1e-6) return INF; 
 
-        // Time remaining until the end of the current 900-second slot
         double time_to_slot_end = 900.0 - fmod(current_time, 900.0);
         double distance_to_slot_end = speed * time_to_slot_end;
 
         if(distance_to_slot_end >= remaining_distance){
-            // Case 2: Edge is completed in this slot. Calculate exact time needed.
             double time_needed = remaining_distance / speed;
             total_time += time_needed;
-            // No need to update current_time/remaining_distance further, just return
             return total_time; 
         } else {
-            // Case 1: Edge is NOT completed in this slot. Travel until slot ends.
             total_time += time_to_slot_end;
             remaining_distance -= distance_to_slot_end;
             current_time += time_to_slot_end;
         }
     }
-    
     return total_time;
 }
 

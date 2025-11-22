@@ -19,11 +19,20 @@ PHASE2_SRC = $(PHASE2_DIR)/main.cpp \
 PHASE2_OBJ = $(PHASE2_SRC:.cpp=.o)
 PHASE2_TARGET = phase2
 
-# --- Targets ---
-.PHONY: all clean phase1 phase2
+# --- Phase 3 Definitions ---
+PHASE3_DIR = Phase3
+PHASE3_INC = -I./Phase3
+PHASE3_SRC = $(PHASE3_DIR)/main.cpp \
+             $(PHASE3_DIR)/Graph.cpp \
+             $(PHASE3_DIR)/Algorithm.cpp
+PHASE3_OBJ = $(PHASE3_SRC:.cpp=.o)
+PHASE3_TARGET = phase3
 
-# Default target builds both
-all: phase1 phase2
+# --- Targets ---
+.PHONY: all clean phase1 phase2 phase3
+
+# Default target builds all three phases
+all: phase1 phase2 phase3
 
 # --- Phase 1 Build Rules ---
 phase1: $(PHASE1_OBJ)
@@ -41,9 +50,18 @@ phase2: $(PHASE2_OBJ)
 $(PHASE2_DIR)/%.o: $(PHASE2_DIR)/%.cpp
 	$(CXX) $(CXXFLAGS) $(PHASE2_INC) -c $< -o $@
 
+# --- Phase 3 Build Rules ---
+# UPDATED: Now links Phase2/Algorithm.o alongside Phase3 objects
+phase3: $(PHASE3_OBJ) $(PHASE2_DIR)/Algorithm.o
+	$(CXX) $(CXXFLAGS) $(PHASE3_INC) -o $(PHASE3_TARGET) $(PHASE3_OBJ) $(PHASE2_DIR)/Algorithm.o
+	@echo "Build successful: $(PHASE3_TARGET)"
+
+$(PHASE3_DIR)/%.o: $(PHASE3_DIR)/%.cpp
+	$(CXX) $(CXXFLAGS) $(PHASE3_INC) -c $< -o $@
+
 # --- Utilities ---
 clean:
-	rm -f $(PHASE1_DIR)/*.o $(PHASE2_DIR)/*.o
-	rm -f $(PHASE1_TARGET) $(PHASE2_TARGET)
+	rm -f $(PHASE1_DIR)/*.o $(PHASE2_DIR)/*.o $(PHASE3_DIR)/*.o
+	rm -f $(PHASE1_TARGET) $(PHASE2_TARGET) $(PHASE3_TARGET)
 	rm -f output.json
 	@echo "Clean complete!"

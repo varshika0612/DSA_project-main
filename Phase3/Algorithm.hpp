@@ -1,5 +1,5 @@
-#ifndef ALGO_HPP
-#define ALGO_HPP
+#ifndef ALGORITHM_HPP
+#define ALGORITHM_HPP
 
 #include <iostream>
 #include <vector>
@@ -11,103 +11,163 @@
 #include <unordered_map>
 #include <set>
 #include <tuple>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <functional>
 
+// Include Phase 2 algorithm for Yen's and Landmarks
 #include "../Phase2/Algorithm.hpp"
 #include "Graph.hpp"
 
-constexpr double INF = std::numeric_limits<double>::infinity();
-
-// --- GraphAdapter: Bridge between scheduler and Algorithm.cpp ---
-class GraphAdapter {
-private:
-    const Graph& lib_graph;
-
-    struct PairHash {
-        size_t operator()(const std::pair<int,int>& p) const noexcept {
-            size_t h1 = std::hash<int>()(p.first);
-            size_t h2 = std::hash<int>()(p.second);
-            return h1 ^ (h2 << 1);
-        }
-    };
-
-    std::unordered_map<std::pair<int,int>, double, PairHash> distance_cache;
-
-public:
-    explicit GraphAdapter(const Graph& g);
-    
-    double getApproximateDistance(int u, int v);
-    double getExactShortestDistance(int u, int v);
-    std::vector<path> getKShortestPaths(int u, int v, int k);
-    void precomputeLandmarks();
-    const Graph& getLibGraph() const;
+// Pair Hash for unordered_map
+struct PairHash {
+    template <class T1, class T2>
+    std::size_t operator()(const std::pair<T1, T2>& p) const {
+        auto h1 = std::hash<T1>{}(p.first);
+        auto h2 = std::hash<T2>{}(p.second);
+        return h1 ^ (h2 << 1);
+    }
 };
 
-// --- Order ---
+struct RouteStop {
+    int node_id;
+    int order_id;  // -1 for depot
+    bool is_pickup;
+    double arrival_time;
+};
+
 struct Order {
     int id;
     int pickup_node;
     int dropoff_node;
     double completion_time = 0.0;
+    double priority = 0.0;        // Lower value = Higher priority
+    double prep_time = 0.0;       
+    double deadline = std::numeric_limits<double>::infinity(); 
 };
 
-// --- RouteStop ---
-struct RouteStop {
-    int node_id;
-    int order_id;
-    bool is_pickup;
-    double arrival_time;
+// ==========================================
+//          GraphAdapter Class
+// ==========================================
+class GraphAdapter {
+private:
+    const Graph& lib_graph;
+    std::unordered_map<std::pair<int, int>, double, PairHash> distance_cache;
+    std::mutex cache_mutex;
+    
+    std::unordered_map<std::pair<int, int>, double, PairHash> precomputed_distances;
+    bool distances_precomputed = false;
+
+public:
+    explicit GraphAdapter(const Graph& g);
+
+    double getApproximateDistance(int u, int v);
+    double getExactShortestDistance(int u, int v);
+    double getCachedOrCompute(int u, int v, bool use_approximate);
+    
+    void precomputeLandmarks();
+    void precomputeDistanceTable(const std::vector<int>& important_nodes);
+    std::vector<path> getKShortestPaths(int u, int v, int k);
+    const Graph& getLibGraph() const;
+    void clearCache();
+    size_t getCacheSize() const;
 };
 
-// --- Driver ---
+// ==========================================
+//           Driver Class
+// ==========================================
 class Driver {
 public:
     int id;
     std::vector<RouteStop> route;
     double current_time;
     std::set<int> orders_being_carried;
+    int order_count = 0; 
+    
+    static constexpr int MAX_ORDERS_PER_DRIVER = 10;
+    static constexpr double MAX_ROUTE_TIME = 7200.0;  // 2 hours
 
     Driver(int driver_id, int depot_node);
-    
-    void recalculateRouteTimes(GraphAdapter& adapter, bool use_approximate = false);
-    double findBestInsertion(const Order& new_order, GraphAdapter& adapter, 
-                            int& best_p_idx, int& best_d_idx,
-                            bool use_approximate = true) const;
+
+    void recalculateRouteTimes(GraphAdapter& adapter, bool use_approximate);
+    void recalculateRouteTimesFrom(GraphAdapter& adapter, int start_idx, bool use_approximate);
+
+    // Pass 'orders' to check deadlines of existing shipments
+    double findBestInsertion(const Order& new_order, GraphAdapter& adapter,
+                             const std::vector<Order>& all_orders,
+                             int& best_p_idx, int& best_d_idx,
+                             bool use_approximate, double current_best = std::numeric_limits<double>::infinity()) const;
+
+    double findBestInsertionLimited(const Order& new_order, GraphAdapter& adapter,
+                                    const std::vector<Order>& all_orders,
+                                    int& best_p_idx, int& best_d_idx,
+                                    bool use_approximate, int max_candidates = 5) const;
+
     void commitInsertion(const Order& new_order, int p_idx, int d_idx);
     std::vector<int> getFinalRouteNodes() const;
+    bool canAcceptMore() const;
+    double getLoadFactor() const;
 };
 
-// --- Scheduler ---
+// ==========================================
+//           Scheduler Class
+// ==========================================
 class Scheduler {
-private:
-    GraphAdapter& adapter;
-    int depot_node;
-    std::vector<Driver> drivers;
-    std::vector<Order> orders;
-    bool use_approximate_distances;
-
 public:
+    struct Metrics {
+        double total_delivery_time_s;
+        double max_delivery_time_s;
+        double avg_delivery_time_s;
+        int orders_completed;
+        int orders_failed;
+    };
+
     struct AssignmentOutput {
         int driver_id;
         std::vector<int> route;
         std::vector<int> order_ids;
-    };
-    
-    struct MetricsOutput {
-        double total_delivery_time_s;
-        double max_delivery_time_s;
+        double total_time;
     };
 
     struct Output {
+        Metrics metrics;
         std::vector<AssignmentOutput> assignments;
-        MetricsOutput metrics;
     };
 
-    Scheduler(GraphAdapter& ga, int depot, int num_drivers, bool use_approx = true);
+    struct Config {
+        bool use_approximate_for_eval = true;
+        bool use_parallel_eval = false;
+        bool use_limited_candidates = true;
+        int max_insertion_candidates = 5;
+        double max_delivery_time_threshold = 3600.0;
+        double traffic_factor = 1.0;
+        bool balance_driver_loads = true;
+    };
+
+private:
+    GraphAdapter& adapter;
+    int depot_node;
+    Config config;
+    std::vector<Driver> drivers;
+    std::vector<Order> orders;
+    std::mutex result_mutex;
     
+    int selectBestDriver(std::priority_queue<std::tuple<double, double, int>,
+                         std::vector<std::tuple<double, double, int>>,
+                         std::greater<>>& driver_heap);
+
+public:
+    // No default argument for cfg to avoid compiler error
+    Scheduler(GraphAdapter& ga, int depot, int num_drivers, const Config& cfg);
+
     void loadOrders(std::vector<Order>&& o);
-    void findAlternativeRoutes(int pickup, int dropoff, int k = 3);
+    void setConfig(const Config& cfg);
     void run();
+    void runParallel();
     Output getResults();
+    void findAlternativeRoutes(int pickup, int dropoff, int k = 3);
+    void simulateTrafficDelays(double min_factor = 0.9, double max_factor = 1.5);
 };
 
-#endif // ALGO_HPP
+#endif // ALGORITHM_HPP
